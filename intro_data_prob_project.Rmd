@@ -1,0 +1,760 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    fig_width: 9
+    highlight: pygments
+    theme: spacelab
+    toc: yes
+---
+
+# Setup
+
+## Load packages
+
+```{r load-packages, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggthemes)
+library(plotly)
+library(stringr)
+library(cowplot)
+library(scales)
+library(kableExtra)
+```
+
+## Set Global Defaults
+
+Add chunk caching to speed compiling subsequent edits.
+
+```{r set_defaults}
+# set defaults: cache chunks
+knitr::opts_chunk$set(cache=TRUE, echo = TRUE)
+```
+
+## Load data
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+------------------------------------------------------------------------
+
+# Introduction
+
+The following report is an exercise as part of the Duke University Introduction to Probability and Data with R course as part of the Statistics with R Specialization.
+
+The study uses the 2013 Behavioral Risk Factor Surveillance System (BRFSS) processed data. The data was supplied by Duke University as a zipped RData file, downloadable from [this site](https://d3c33hcgiwev3.cloudfront.net/4tiY2fqCQa-YmNn6gnGvzQ_1e7320c30a6f4b27894a54e2de50a805_brfss2013.RData?Expires=1644364800&Signature=WyfTbYrzTK7Uozw9DneS6rXi-Q5tsOOcr0YzqqH0l6rsgXIobGtw26AQ~k~FvVYuPXnaz69zB1EfrO08IP9ZwpMwqf3hqWD1dsfwqlBx5bATtDMGEFblJFILJhs2p-8-DR3ysZrbmagfERINtO378OJM9I~iePQuOoqglu7Z4uY_&Key-Pair-Id=APKAJLTNE6QMUY6HBC5A).
+
+The unzipped file is loaded directly into R using the base load command.
+
+Full information on the Behavioral Risk Factor Surveillance System is available from the [Centers for Disease Control and Prevention website](https://www.cdc.gov/brfss/).
+
+# Part 1: Data
+
+## Collection Methodology
+
+The following summary of survey strategy is taken from the [2013 User Guide](https://www.cdc.gov/brfss/data_documentation/pdf/userguidejune2013.pdf).
+
+*Since 2011, BRFSS has conducted both landline telephone- and cellular telephone-based surveys. In conducting the BRFSS landline telephone survey, interviewers collect data from a randomly selected adult in a household. In conducting the cellular telephone version of the BRFSS questionnaire, interviewers collect data from an adult who participates by using a cellular telephone and resides in a private residence or college housing.*
+
+### Sample size
+
+-   The BRFSS goal is to support at least 4,000 interviews per state each year.
+
+-   Factors influencing sample size include the cost involved in data collection for a larger sample and the states' need for obtaining estimates for sub-populations within states.
+
+-   The 2013 survey data set consists of 491,775 responses.
+
+### The Landline Sample
+
+-   [Disproportionate stratified sampling (DSS)](https://www.oxfordreference.com/view/10.1093/oi/authority.20110803095722568) has been used for the landline sample since 2003.
+
+-   DDS draws telephone numbers from two strata (lists) that are based on the presumed density of known telephone household numbers.
+
+-   The BRFSS samples landline telephone numbers based on substate geographic regions.
+
+### The Cellular Telephone Sample
+
+-   The cellular telephone sample is randomly generated from a sampling frame of confirmed cellular area code and prefix combinations.
+
+-   Cellular telephone respondents are randomly selected with each having equal probability of selection.
+
+-   Data from out-of-state interviews are transferred to the appropriate states at the end of each data-collection period.
+
+### Weighting
+
+Data weighting is an important statistical process that attempts to remove bias in the sample.
+
+The BRFSS weighting process includes two steps: design weighting and iterative proportional fitting (also known as "raking" weighting).
+
+Because raking does not require demographic information for small geographic areas, it allows for the introduction of more demographic variables than were used by the BRFSS in the past.
+
+Since 2011, telephone ownership, education level, marital status, and home ownership were added to age, sex, race, ethnicity and region, which were the variables used in prior years.
+
+### Generalisability
+
+Because both data collection methods used a broad representative random sampling, the sample data is generalizable to the adult population of the participating states.
+
+### Causality
+
+According to the CDC's page on their [surveillance systems](https://www.cdc.gov/obesity/data/surveillance.html):
+
+*BRFSS is the world's largest, on-going telephone health survey system, tracking health conditions and risk behaviors among adults in all 50 states and select territories.*
+
+**The Behavioral Risk Factor Surveillance System is an observational study and as such, the data is unsuitable for making causal inferences.**
+
+------------------------------------------------------------------------
+
+# Part 2: Research questions
+
+**Research question 1:**
+
+The [UK's National Health Service BMI calculator](https://www.nhs.uk/live-well/healthy-weight/bmi-calculator/) makes the statement that "Black, Asian and other minority ethnic groups with a BMI of 23 or more have a higher risk of getting type 2 diabetes and other long term illnesses".
+
+Does this statement hold true for participants of the American survey?
+
+**Research question 2:**
+
+Asthma rates are generally considered to be inversely proportional to income. This is often attributed to poor living conditions in rented accommodation.
+
+This question asks "Does the data support the premise that renters in lower income brackets are disproportionally represented in asthma rates?"
+
+**Research question 3:**
+
+Exercise and sleep are both linked to generally having a positive influence on mental health. Is there any indication in the data that one has a greater influence than the other?
+
+------------------------------------------------------------------------
+
+# Part 3: Exploratory data analysis
+
+## Research question 1
+
+### Introduction
+
+The [UK's National Health Service BMI calculator](https://www.nhs.uk/live-well/healthy-weight/bmi-calculator/) makes the following statement
+
+> "Black, Asian and other minority ethnic groups with a BMI of 23 or more have a higher risk of getting type 2 diabetes and other long term illnesses"
+
+where "other minority ethnic groups" is referring to non-European ethnicities.
+
+I've spent a lot of time living in New Zealand where there is a high proportion of Pacific Islanders who report both high levels of overweight/obesity and also diabetes. The health service there runs public awareness campaigns targeting these groups to advise of the elevated risk of diabetes and other weight related disease. I've long wondered if the second was not just down to the greater weight problems, but also a higher rate of complications amongst those affected.
+
+For this question, we ask **Does this statement hold true for participants of the American survey?**
+
+### Data Preparation
+
+We will just look specifically at diabetes for this exercise, specifically the survey question "*Has a doctor, nurse, or other health professional ever told you that you have diabetes?"* found in the column `diabete3`
+
+There is a calculated BMI column `X_bmi5`, but we will make our own calculated values from the height and weight data found in `height3` and `weight2` respectively (rather than the computed values `htm4`and `wtkg3`):
+
+$$
+bmi = \frac{weight}{height^2}
+$$
+
+First convert both measurements to metric, then calculate the BMI and finally the [weight classification that the BMI falls under](https://www.cdc.gov/healthyweight/assessing/bmi/adult_bmi/index.html).
+
+| BMI            | **Weight Status** |
+|----------------|-------------------|
+| Below 18.5     | Underweight       |
+| 18.5 -- 24.9   | Healthy Weight    |
+| 25.0 -- 29.9   | Overweight        |
+| 30.0 and Above | Obesity           |
+
+^*BMI Weight Status Classification*^
+
+This final step is to help gain an understanding of how weight status changes across the various racial/ethnic groups identified in the calculated column `X_race`.
+
+The possible values recorded are:
+
+|                                                              |
+|--------------------------------------------------------------|
+| White only, non-Hispanic                                     |
+| Black only, non-Hispanic                                     |
+| American Indian or Alaskan Native only, Non-Hispanic         |
+| Asian only, non-Hispanic                                     |
+| Native Hawaiian or other Pacific Islander only, Non-Hispanic |
+| Other race only, non-Hispanic                                |
+| Multiracial, non-Hispanic                                    |
+| Hispanic                                                     |
+
+^*Racial/ethnic groups identified in the BRFSS Survey data*^
+
+```{r diabetesData, warning=FALSE}
+
+brfss2013 <-brfss2013 %>%
+    mutate(weightkg = as.numeric(as.character(weight2))) %>%
+    mutate(weightkg = case_when(
+        weightkg >= 50 & weightkg < 1000 ~ round(weightkg / 2.2),
+        weightkg >= 9000 & weightkg < 9999 ~ weightkg - 9000,
+        TRUE ~ as.numeric(NA)
+        )
+    )  %>%
+    mutate(heightcm = case_when(
+        height3 >= 50 & height3 < 1000 ~ round(((height3 %/% 100)*12 + (height3 %% 100)) * 2.54),
+        height3 >= 9000 & height3 < 9999 ~ height3 - 9000,
+        TRUE ~ as.numeric(NA)
+        )
+    )  %>%
+    mutate(bmi = case_when(
+        !is.na(heightcm) & !is.na(weightkg) ~ round(weightkg / (heightcm/100)**2, 1),
+        TRUE ~ as.numeric(NA)
+        )
+    ) %>%
+    mutate(weightStatus = case_when(
+        bmi < 18.5 ~ 2,
+        bmi >= 18.5 & bmi < 25 ~ 3,
+        bmi >= 25 & bmi < 30 ~ 4,
+        bmi > 30 ~ 5,
+        TRUE ~ 1
+        )
+    ) %>%
+    mutate(weightStatus = factor(
+        weightStatus, 
+        labels=c('Unknown', 'Underweight', 'Healthy', 'Overweight', 'Obese')
+        )
+    )
+
+brfss2013 %>%
+    select(height3, heightcm, weight2, weightkg, bmi, weightStatus) %>%
+    sample_n(10)
+```
+
+### Analysis
+
+We first look at how Weight Status is spread in each ethnic group:
+
+```{r statusByRace, message=FALSE, warning=FALSE}
+
+weightStatusByRace <- brfss2013 %>%
+    select(weightStatus, X_race) %>%
+    filter(as.integer(weightStatus) > 1 & !is.na(X_race)) %>%
+    group_by(X_race, weightStatus) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    mutate(X_race = as.character(X_race)) %>%
+    mutate(X_race = str_wrap(X_race, 20)) %>%
+    arrange(X_race, desc(Percent))
+
+weightStatusByRace %>% 
+    ggplot(aes(x=X_race, y=Percent, fill=weightStatus)) +
+    geom_col(position="dodge") +
+    theme_excel_new() +
+    labs(fill = "Weight Status") +
+    ggtitle("Weight Status as Percentage Make Up of Each Recorded Ethnic Group")
+
+weightStatusByRace %>% 
+    select(X_race, weightStatus, Percent) %>%
+    pivot_wider(
+        names_from = weightStatus, 
+        names_sort = T, 
+        values_from = Percent
+    ) %>%
+    rename(`Ethnic Group` = X_race) %>%
+    kbl() %>% 
+    kable_styling(bootstrap_options = c("condensed"))
+```
+
+^*Weight Status as Percentage Make Up of Each Recorded Ethnic Group*^
+
+The data shows an uneven distribution of weight statuses across the groups with only Asian people having majority 'Healthy' status while Black, Native American and Polynesians show majority 'Obesity' status.
+
+While we would expect the rate of obesity overall to be higher in those last three groups especially, the question specifically refers to people in minority groups being more at risk of diabetes on a like-for-like comparison.
+
+Let's look at the Overweight category since that has an upper and lower bound. Obesity is open ended - if one group has more extreme obesity then this would skew the results.
+
+```{r overweight}
+diabetes_race <- brfss2013 %>%
+    select(diabete3, X_race, weightStatus) %>%
+    mutate(hasDiabetes = as.integer(diabete3) %in% 1:2) %>%
+    filter(!is.na(X_race) & weightStatus=='Overweight') %>%
+    group_by(X_race, hasDiabetes) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    mutate(X_race = as.character(X_race)) %>%
+    mutate(X_race = str_wrap(X_race, 20)) %>%
+    filter(hasDiabetes) %>%
+    arrange(desc(Percent))
+
+diabetes_race %>% 
+    ggplot(aes(x=reorder(X_race, -Percent), y=Percent)) +
+    geom_col(fill='orange') +
+    theme_excel_new() +
+    ggtitle("Percentage Overweight People in Each Recorded Ethnic Group that Identify as Diabetic")
+
+diabetes_race %>% 
+    select(X_race, Percent) %>%
+    kbl(col.names = c('Ethnic Group', 'Percent')) %>% 
+    kable_styling(bootstrap_options = c("condensed"), full_width = F)
+
+```
+
+^*Percentage Overweight People in Each Recorded Ethnic Group that Identify as Diabetic*^
+
+Indeed, for this group, there is a much higher rate amongst Black people (17.8%) versus White people (10.9%), with all other groups in between.
+
+This would support the claim.
+
+Let's relook at the data, this time with the criteria from the original statement (BMI \> 23):
+
+```{r bmi_gt_23}
+diabetes_bmi <- brfss2013 %>%
+    select(diabete3, X_race, bmi) %>%
+    mutate(hasDiabetes = as.integer(diabete3) %in% 1:2) %>%
+    filter(!is.na(X_race) & bmi>=23) %>%
+    group_by(X_race, hasDiabetes) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    mutate(Race = as.character(X_race)) %>%
+    mutate(Race = str_wrap(Race, 20)) %>%
+    filter(hasDiabetes) %>%
+    arrange(desc(Percent))
+
+diabetes_bmi %>% ggplot(aes(x=reorder(Race, -Percent), y=Percent)) +
+    geom_col(fill='orange') +
+    theme_excel_new() +
+    ggtitle("Percentage People with BMI > 25 in Each Recorded Ethnic Group that Identify as Diabetic")
+
+diabetes_bmi %>% 
+    select(X_race, Percent) %>%
+    kbl(col.names = c('Ethnic Group', 'Percent')) %>% 
+    kable_styling(bootstrap_options = c("condensed"), full_width = F)
+
+```
+
+^*Percentage People with BMI > 25 in Each Recorded Ethnic Group that Identify as Diabetic*^
+
+### Conclusion
+
+Although this subset of the data shows Asians now with a slightly lower risk of diabetes than White people, overall it appears to support the statement that people from minority groups with a BMI of 23 or more have a higher risk of getting type 2 diabetes and other long term illnesses.
+
+Caution with this data is required: it is based on a voluntary survey with no evidence required when answering questions. In addition, the analysis here is based solely on one question regarding diabetes, and that question didn't specify the type of diabetes.
+
+However, the trends indicated here would warrant further analysis with medical record data.
+
+## Research question 2
+
+### Introduction
+
+I lost a childhood friend to a severe asthma attack, thought at the time to have been aggravated by the amount of mildew spores in the air of his home. He was from a low income family that rented a substandard house and couldn't afford adequate heating in the winter time.
+
+Asthma rates are inversely proportional to income. This is often attributed to poor living conditions in rented accommodation.
+
+This question asks "Does the data support the premise that renters in lower income brackets are disproportionally represented in asthma rates?"
+
+For this, we will first need to consider asthma rates and proportion renters versus owners across the income groups.
+
+Finally we will compare asthma rates of renters versus owners across the income groups.
+
+### Data Preparation
+
+No data cleaning or transformation of the original data was required for this analysis.
+
+### Analysis
+
+The following variables are used:
+
++-------------+------------------------------------------------------------------------------+
+| `income2`   | Household income level.                                                      |
+|             |                                                                              |
+|             | Possible values are:                                                         |
+|             |                                                                              |
+|             | -   Less than \$10,000                                                       |
+|             |                                                                              |
+|             | -   Less than \$15,000                                                       |
+|             |                                                                              |
+|             | -   Less than \$20,000                                                       |
+|             |                                                                              |
+|             | -   Less than \$25,000                                                       |
+|             |                                                                              |
+|             | -   Less than \$35,000                                                       |
+|             |                                                                              |
+|             | -   Less than \$50,000                                                       |
+|             |                                                                              |
+|             | -   Less than \$75,000                                                       |
+|             |                                                                              |
+|             | -   \$75,000 or more                                                         |
+|             |                                                                              |
+|             | Don't Know/Refused/etc values are not considered.                            |
++-------------+------------------------------------------------------------------------------+
+| `X_ltasth1` | *Adults who have ever been told they have asthma*                            |
+|             |                                                                              |
+|             | Possible values are No, Yes or Don't Know/Refused/etc..                      |
+|             |                                                                              |
+|             | We will only consider the Yes/No values.                                     |
++-------------+------------------------------------------------------------------------------+
+| `renthom1`  | "*Do you own or rent your home?*".                                           |
+|             |                                                                              |
+|             | Possible values are Own, Rent, Other Arrangement or Don't Know/Refused/etc.. |
+|             |                                                                              |
+|             | We consider only the respondents with either 'Rent' or 'Own'                 |
++-------------+------------------------------------------------------------------------------+
+
+^*Variables used from the BRFSS Survey Data*^
+
+```{r asthmaBySalary}
+asthmaStatusBySalary <- brfss2013 %>%
+    select(X_ltasth1, income2) %>%
+    filter(!is.na(X_ltasth1) & !is.na(income2)) %>%
+    group_by(income2, X_ltasth1) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    rename(Income = income2) %>%
+    filter(X_ltasth1=='Yes') %>%
+    arrange(Income, desc(Percent))
+
+asthmaStatusBySalary %>% 
+    ggplot(aes(x=Income, y=Percent)) +
+    geom_col(fill='orange') +
+    theme_excel_new() +
+    ggtitle("Asthma Rate Amongst Salary Groups")
+
+asthmaStatusBySalary %>% 
+    select(Income, Percent) %>%
+    kbl() %>% 
+    kable_styling(bootstrap_options = c("condensed"), full_width = F)
+```
+
+^*Asthma Rate Amongst Salary Groups*^
+
+As predicted, the survey confirms the relationship between income and asthma.
+
+Further, the rate of increase in asthma increases as income levels drop. Caution must be used looking at this curve as the salary banding is not equal, however as the bands increase in size with income, this curve would be far more pronounced on a continuous income scale.
+
+Next, we look at rates of renting versus ownership to see if there is any correlation with the shape of the asthma graph:
+
+```{r rentVsOwnBySalary}
+rentVsOwnBySalary <- brfss2013 %>%
+    select(renthom1, income2) %>%
+    filter(renthom1 %in% c('Rent', 'Own') & !is.na(income2)) %>%
+    group_by(income2, renthom1) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    rename(Income = income2) %>%
+    filter(renthom1=='Rent') %>%
+    arrange(Income, desc(Percent))
+
+rentVsOwnBySalary %>% 
+    ggplot(aes(x=Income, y=Percent)) +
+    geom_col(fill='orange') +
+    theme_excel_new() +
+    ggtitle("Proportion of Each Salary Group Renting")
+
+rentVsOwnBySalary %>% 
+    select(Income, Percent) %>%
+    kbl() %>% 
+    kable_styling(bootstrap_options = c("condensed"), full_width = F)
+```
+
+^*Proportion of Each Salary Group Renting*^
+
+We see a much stronger negative relationship here with a much more linear shape. It does show however that the proportion (as expected) of people renting is significantly higher in lower income groups, so the question remains, is there any evidence of a link between renting in lower income brackets and a higher asthma rate.
+
+For this, we'll need to look at the asthma rate again, this time looking at whether there is correlation between asthma rates for renters and asthma rate differences across the income groups.
+
+If the premise that poor rental conditions are a cause of higher asthma rates in lower incomes, we would expect to see a much higher rate of asthma in renters than owners proportionally in lower income groups, and for those rates to even out in higher income groups.
+
+```{r rentVsOwnVsAsthma}
+rentVsOwnVsAsthmaBySalary <- brfss2013 %>%
+    select(X_ltasth1, renthom1, income2) %>%
+    filter(!is.na(X_ltasth1) & renthom1 %in% c('Rent', 'Own') & !is.na(income2)) %>%
+    group_by(income2, renthom1, X_ltasth1) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    rename(Income = income2) %>%
+    select(-n) %>%
+    pivot_wider(names_from = renthom1, values_from = Percent) %>%
+    filter(X_ltasth1 == 'Yes') %>%
+    mutate(`Proportional Difference (%)` = round(100 * (Rent/Own - 1), 1))
+
+rentVsOwnVsAsthmaBySalary %>%
+    ungroup() %>%
+    plot_ly(x = ~Income, y = ~Rent, type = 'bar', name = 'Asthma Rate for Renters') %>% 
+    add_trace(y = ~Own, name = 'Asthma Rate for Owners') %>% 
+    add_trace(
+        y = ~`Proportional Difference (%)`, 
+        type = 'scatter',  
+        mode = 'lines+markers', 
+        name = 'Proportional Difference (%)'
+        ) %>% 
+    layout(title = list(text = 'Asthma Rate by Own/Rent Home Status and Income Group'),
+           xaxis = list(title = ""),
+           yaxis = list(title = 'Percent', barmode = 'group'), 
+           barmode = 'group'
+    ) %>% 
+    config(displayModeBar = F) %>%
+    layout(xaxis=list(fixedrange=T)) 
+
+rentVsOwnVsAsthmaBySalary %>% 
+    select(Income, Rent, Own, `Proportional Difference (%)`) %>%
+    kbl() %>% 
+    kable_styling(bootstrap_options = c("condensed"), full_width = F)
+```
+
+^*Asthma Rate by Own/Rent Home Status and Income Group*^
+
+While there is an overall downward trend in the proportional difference between rental and owner asthma rates as income increases, there is no clear correlation as there are 3 sizeable spikes with the highest overall proportion coming from the \$20K - \$25K income band.
+
+### Conclusion
+
+The findings support the premise that lower income people in general have disproportionally higher asthma rates.
+
+While they certainly don't refute the premise that renters in lower income brackets are disproportionally represented in asthma rates when compared with people of the same income bracket that own their own home but nor does the data from the survey provide any compelling correlation.
+
+## Research question 3
+
+### Introduction
+
+Exercise and sleep are both linked to generally having a positive influence on mental health. I experience long months of insomnia and know the strain it can put on health first-hand.
+
+Is there any indication in the data that one has a greater influence than the other?
+
+### Data Preparation
+
+The following variables are used in this analysis:
+
+|          |                                                          |
+|----------|----------------------------------------------------------|
+| padur1\_ | Minutes Of Physical Activity Per Week For First Activity |
+| menthlth | Number Of Days Mental Health Not Good (in past 30 days)  |
+| sleptim1 | How Much Time Do You Sleep (hours in a 24 hour period)   |
+
+For the sake of this analysis, we create a new column `sleepLengthQuality` that indicates health of hours slept where:
+
+| Value | Label     | Meaning                                      |
+|-------|-----------|----------------------------------------------|
+| 0     | Healthy   | 7 \>= sleptim1 \<= 9                         |
+| 1     | Adequate  | 6 \>= sleptim1 \< 7 or 9 \> sleptim1 \<= 10  |
+| 2     | Unhealthy | 1 \>= sleptim1 \< 6 or 10 \> sleptim1 \<= 24 |
+
+^*Definitions of sleep health used in this analysis*^
+
+All other values are considered `NA`.
+
+Sleep time classifications come from the [National Library of Medicine](https://pubmed.ncbi.nlm.nih.gov/29073412/) Guidelines and are for a healthy adult between 25 and 64. For the sake of this analysis, we use the same guideline for all respondents.
+
+We create a new data frame `dfQ3` with the necessary variables, the Sleep Health Quality data and then filter any rows where one of those variables is either `NA` or has an invalid value. `padur1_` is renamed to `Exercise` and `menthlth` to `MentalHealth` for readability.
+
+Additionally, `MentalHealth` is reversed to now mean "Number Of Days Mental Health **Good** (in past 30 days)". That is, the higher the number, the better the perceived mental health of the respondent.
+
+```{r cleanSleepData}
+dfQ3 <- brfss2013 %>%
+    select(padur1_, menthlth, sleptim1) %>%
+    mutate(sleepLengthQuality = 
+               case_when(
+                   sleptim1 >= 7 & sleptim1 <= 9 ~ 2,
+                   (6 <= sleptim1 & sleptim1 < 7) | (9 < sleptim1 & sleptim1 <= 10) ~ 3,
+                   (1 <= sleptim1 & sleptim1 < 6) | (10 < sleptim1 & sleptim1 <= 24) ~ 4,
+                   TRUE ~ 1
+               )
+    ) %>%
+    mutate(sleepLengthQuality = factor(
+        sleepLengthQuality, 
+        labels=c('Unknown', 'Healthy', 'Adequate', 'Unhealthy')
+        )
+    ) %>%
+    filter(
+        sleepLengthQuality != 'Unknown',
+        !is.na(padur1_) & padur1_ <= 599,
+        !is.na(menthlth) & menthlth <= 30,
+    ) %>%
+    rename(Exercise = padur1_, MentalHealth = menthlth) %>%
+    mutate(MentalHealth = 30 - MentalHealth)
+
+```
+
+### Analysis
+
+This is not quite a straightforward comparison since high activity levels are associated with sleep quality.
+
+We will need to first look at the link between the two, then their links with mental health, finally looking at those who score highly in one of exercise or sleep but not both and see if it's possible to find a level of correlation for each factor.
+
+First, for better understanding, we can look at the distribution of the data across the three variables:
+
+```{r plotSleepVariables}
+h1 <- dfQ3 %>% 
+    ggplot(aes(MentalHealth)) +
+    geom_histogram(fill='orange', bins = 10, aes(y = (..count..)/sum(..count..))) +
+    theme_excel_new() + 
+    scale_y_continuous(labels=percent) +
+    ggtitle('Mental Health Index')
+
+h2 <- dfQ3 %>% 
+    ggplot(aes(Exercise)) +
+    geom_histogram(fill='orange', bins = 10, aes(y = (..count..)/sum(..count..))) +
+    theme_excel_new() +
+    scale_y_continuous(labels=percent) +
+    ggtitle('Exercise Minutes / Month')
+
+h3 <- dfQ3 %>% 
+    ggplot(aes(sleepLengthQuality)) +
+    geom_bar(fill='orange', aes(y = (..count..)/sum(..count..))) +
+    theme_excel_new() +
+    scale_y_continuous(labels=percent) +
+    ggtitle('Sleep Health')
+
+title <- ggdraw() + 
+    draw_label(
+        "Variable Distributions",
+        fontface = 'bold',
+        x = 0,
+        hjust = 0
+    ) +
+    theme(
+        plot.margin = margin(0, 0, 0, 7)
+    )
+
+plot_grid(title, plot_grid(h1, h2, h3, nrow = 1), ncol = 1, rel_heights = c(0.1, 1))
+```
+
+Each variable is heavily skewed:
+
+-   Almost 70% of respondents report no bad mental health days (representing the maximum 30 good days).
+
+-   85% of respondents report the lowest 20% or the range of values for exercise minutes (120 minutes or less).
+
+-   Approximately 65% report healthy sleeping patterns while 10% fall into the unhealthy category.
+
+Since we will most be interested in the tails of both Mental Health & Exercise, we will be dealing with a progressively smaller subset of data.
+
+First, let's examine what happens to the relationship between mental health as we progressively include only those with the worst condition. We'll look at the overall relationship, the lower 25%, the lower 10% and finally the worst 2%:
+
+```{r mhSleep}
+mhAll <- dfQ3 %>%
+    select(MentalHealth, sleepLengthQuality) %>%
+    group_by(sleepLengthQuality) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    select(-n)
+
+mhL25 <- dfQ3 %>%
+    select(MentalHealth, sleepLengthQuality) %>%
+    filter(MentalHealth <= quantile(dfQ3$MentalHealth, 0.25)) %>%
+    group_by(sleepLengthQuality) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    select(-n)
+
+mhL10 <- dfQ3 %>%
+    select(MentalHealth, sleepLengthQuality) %>%
+    filter(MentalHealth <= quantile(dfQ3$MentalHealth, 0.1)) %>%
+    group_by(sleepLengthQuality) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    select(-n)
+
+mhChronic <- dfQ3 %>%
+    select(MentalHealth, sleepLengthQuality) %>%
+    filter(MentalHealth <= quantile(dfQ3$MentalHealth, 0.02)) %>%
+    group_by(sleepLengthQuality) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    select(-n)
+
+mhAll <- mhAll %>% 
+    mutate(L25 = mhL25$Percent, L10 = mhL10$Percent, Chronic = mhChronic$Percent)
+```
+
+```{r plotmh, cache=FALSE}
+mhAll %>%
+    plot_ly(x = ~sleepLengthQuality, y = ~Percent, type = 'bar', name = 'All') %>%
+    add_trace(y = ~L25, name = 'Lower 25%') %>%
+    add_trace(y = ~L10, name = 'Lower 10%') %>%
+    add_trace(y = ~Chronic, name = 'Chronic (Lower 2%)') %>%
+    layout(
+        title = list(text = 'Sleep Quality vs Worsening Mental Health'),
+        xaxis = list(title = 'Sleep Length Quality'), 
+        barmode = 'group'
+        ) %>% 
+    config(displayModeBar = F) %>%
+    layout(xaxis=list(fixedrange=T)) 
+
+mhAll %>% 
+    kbl(col.names = c('Sleep Quality', 'All', 'Lower 25%', 'Lower 10%', 'Chronic (Lower 2%)')) %>% 
+    kable_styling(bootstrap_options = c("condensed"), full_width = F)
+```
+
+^*Sleep Quality vs Worsening Mental Health*^
+
+The data shows a strong correlation between mental health and sleep quality. It would be impossible to draw any conclusions from this study regarding the direction of this relationship (does lack of sleep lead to degradation of mental health or vice versa?). Most likely there is a two-way relationship here.
+
+Next, we look to see if we can find a similar strong pattern between exercise and sleep. This time we will progressively look at only the top scoring respondents (all respondents, the upper 25%, the upper 10% and finally the top 2% only). This should tell us if those who exercise the most also record better sleep health.
+
+```{r sleepExercise}
+exAll <- dfQ3 %>%
+    select(Exercise, sleepLengthQuality) %>%
+    group_by(sleepLengthQuality) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    select(-n)
+
+exU25 <- dfQ3 %>%
+    select(Exercise, sleepLengthQuality) %>%
+    filter(Exercise >= quantile(dfQ3$Exercise, 0.75)) %>%
+    group_by(sleepLengthQuality) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    select(-n)
+
+exU10 <- dfQ3 %>%
+    select(Exercise, sleepLengthQuality) %>%
+    filter(Exercise >= quantile(dfQ3$Exercise, 0.9)) %>%
+    group_by(sleepLengthQuality) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    select(-n)
+
+exU2 <- dfQ3 %>%
+    select(Exercise, sleepLengthQuality) %>%
+    filter(Exercise >= quantile(dfQ3$Exercise, 0.98)) %>%
+    group_by(sleepLengthQuality) %>% 
+    summarise(n = n(), .groups = 'drop_last') %>%
+    mutate(Percent = round(100 * n/sum(n), 1)) %>%
+    select(-n)
+
+exAll <- exAll %>% 
+    mutate(U25 = exU25$Percent, U10 = exU10$Percent, U2 = exU2$Percent)
+
+exAll %>%
+    plot_ly(x = ~sleepLengthQuality, y = ~Percent, type = 'bar', name = 'All') %>%
+    add_trace(y = ~U25, name = 'Upper 25%') %>%
+    add_trace(y = ~U10, name = 'Upper 10%') %>%
+    add_trace(y = ~U2, name = 'Top 2%') %>%
+    layout(
+        title = list(text = 'Sleep Quality vs Increasing Exercise Level'),
+        xaxis = list(title = 'Sleep Length Quality'), 
+        barmode = 'group'
+        ) %>% 
+    config(displayModeBar = F) %>%
+    layout(xaxis=list(fixedrange=TRUE)) 
+
+exAll %>% 
+    kbl(col.names = c('Sleep Quality', 'All', 'Upper 25%', 'Upper 10%', 'Top 2%')) %>% 
+    kable_styling(bootstrap_options = c("condensed"), full_width = F)
+```
+
+^*Sleep Quality vs Increasing Exercise Level*^
+
+Surprisingly, not only is there very little change in sleeping health as you look at the most active respondents, but it would also appear that those who exercise more are, on average, have slightly worse sleep health.
+
+### Conclusion
+
+While it's not possible to tell the nature of the relationship between mental health and sleep health, it is possible to see that the two correlate closely. Exercise however seems to have very little effect on sleep health on average other than a slightly negative effect in the upper 10%.
+
+In answer to the research question *"Is there any indication in the data that one has a greater influence than the other?"* it would be safe to say the indication is that mental health has the stronger influence.
+
+Caveats are needed when reading this analysis:
+
+-   Mental health was measured by as response to a single variable *"Number Of Days Mental Health Not Good"*. Respondents tend to answer positively to questions and may underestimate this question. It's also extremely subjective and will vary from person to person.
+
+-   A similar effect could also be happening with the exercise data, although with only 15% saying they do at least 2 hours exercise in a week, there's unlikely to be much exaggerating happening there.
+
+-   The sleep health index was created using guidelines for adults aged between 25 & 65. A small adjustment would be needed for those outside of that age to be more accurate. Having said that, number of hours is no guarantee of sleep quality so perhaps accuracy is a bit moot for this vector,
+
+------------------------------------------------------------------------
+
+ 
+
+ 
